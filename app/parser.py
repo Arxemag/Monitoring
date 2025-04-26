@@ -1,18 +1,11 @@
 import re
 from datetime import datetime
-from typing import Optional
-import httpx
 from sqlalchemy.orm import Session
 from app.models import Server, ServerInfo, CatalogStatus
+from app.services.site_parser import SiteParser
 
 # --- Парсер главной страницы админки ---
-async def parse_admin_title(client: httpx.AsyncClient, server: Server, db: Session):
-    url = f"http://{server.host}:{server.ports}/admin/title"
-    resp = await client.get(url, timeout=10)
-    resp.raise_for_status()
-
-    text = resp.text
-
+async def parse_admin_title(text: str, server: Server, db: Session):
     reg_number_match = re.search(r"Регистрационный номер:\s*\d+_(\d+)", text)
     expiration_date_match = re.search(r"Ограничение по сроку работы системы: до (\d{2}\.\d{2}\.\d{4})", text)
     reg_file_limit_match = re.search(r"Ограничение рег\. файла:\s*(\d+)", text)
@@ -35,23 +28,12 @@ async def parse_admin_title(client: httpx.AsyncClient, server: Server, db: Sessi
     db.commit()
 
 # --- Парсер настроек лицензий ---
-async def parse_admin_lic(client: httpx.AsyncClient, server: Server, db: Session):
-    url = f"http://{server.host}:{server.ports}/admin/lic"
-    resp = await client.get(url, timeout=10)
-    resp.raise_for_status()
-
-    text = resp.text
-
-    # Здесь пока пропускаем, если надо будет что-то сохранять — допишем.
+async def parse_admin_lic(text: str, server: Server, db: Session):
+    # Пока пропущено — допишем при необходимости
+    pass
 
 # --- Парсер настроек резервного копирования и перезапуска ---
-async def parse_admin_pref(client: httpx.AsyncClient, server: Server, db: Session):
-    url = f"http://{server.host}:{server.ports}/admin/pref"
-    resp = await client.get(url, timeout=10)
-    resp.raise_for_status()
-
-    text = resp.text
-
+async def parse_admin_pref(text: str, server: Server, db: Session):
     backup_time_match = re.search(r"Время, когда производить резервное копирование:\s*([\d:]+)", text)
     restart_time_match = re.search(r"Укажите время, когда производить перезапуск сервера\s*([\d:]+)", text)
 
@@ -68,13 +50,7 @@ async def parse_admin_pref(client: httpx.AsyncClient, server: Server, db: Sessio
     db.commit()
 
 # --- Парсер статусов каталогов ---
-async def parse_sysinfo_metrics(client: httpx.AsyncClient, server: Server, db: Session):
-    url = f"http://{server.host}:{server.ports}/sysinfo/metrics"
-    resp = await client.get(url, timeout=10)
-    resp.raise_for_status()
-
-    text = resp.text
-
+async def parse_sysinfo_metrics(text: str, server: Server, db: Session):
     main_page_pattern = re.compile(r'kserver_main_page\{.*?path="([^"]+)"\} (\d+)')
     db_pattern = re.compile(r'kserver_product_control\{.*?path="([^"]+)"\} (\d+)')
 
@@ -89,7 +65,6 @@ async def parse_sysinfo_metrics(client: httpx.AsyncClient, server: Server, db: S
     for path, status in db_matches:
         catalog_map.setdefault(path, {})["db_status"] = int(status)
 
-    # Чистим старые статусы
     db.query(CatalogStatus).filter(CatalogStatus.server_id == server.id).delete()
 
     for path, status_data in catalog_map.items():
@@ -105,7 +80,20 @@ async def parse_sysinfo_metrics(client: httpx.AsyncClient, server: Server, db: S
 
 # --- Главный метод ---
 async def parse_server_data(server: Server, db: Session):
-    async with httpx.AsyncClient() as client:
-        await parse_admin_title(client, server, db)
-        await parse_admin_pref(client, server, db)
-        await parse_sysinfo_metrics(client, server, db)
+    base_url = f"http://{server.host}:{server.ports}"
+    parser = SiteParser(base_url)
+
+    try:
+        await parser.login()
+        text_title = await parser.fetch("/admin/title")
+        text_pref = await parser.fetch("/admin/pref")
+        text_metrics = await parser.fetch("/sysinfo/metrics")
+        # Если надо будет парсить лицензии — раскомментировать
+        # text_lic = await parser.fetch("/admin/lic")
+
+        await parse_admin_title(text_title, server, db)
+        await parse_admin_pref(text_pref, server, db)
+        await parse_sysinfo_metrics(text_metrics, server, db)
+        # await parse_admin_lic(text_lic, server, db)  # пока не вызываем
+    finally:
+        await parser.close()
