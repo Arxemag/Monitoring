@@ -13,6 +13,7 @@ class Server(Base):
     # Связи
     info = relationship("ServerInfo", back_populates="server", uselist=False)
     catalogs = relationship("CatalogStatus", back_populates="server")
+    services = relationship("Service", back_populates="server")  # ✅ добавлено!
 
 class ServerInfo(Base):
     __tablename__ = "server_info"

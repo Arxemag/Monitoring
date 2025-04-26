@@ -1,43 +1,36 @@
 from pydantic import BaseModel
-from datetime import date
-from typing import Optional
+from typing import Optional, List
 
-class ServerInfoBase(BaseModel):
-    registration_number: Optional[int] = None
-    expiration_date: Optional[date] = None
-    reg_file_limit: Optional[int] = None
-    session_count: Optional[int] = None
-    backup_time: Optional[str] = None
-    restart_time: Optional[str] = None
+# --- SERVER ---
+class ServerBase(BaseModel):
+    name: str
+    url: str
 
-class ServerInfoCreate(ServerInfoBase):
+class ServerCreate(ServerBase):
     pass
 
-class ServerInfoUpdate(ServerInfoBase):
-    pass
+class ServerUpdate(BaseModel):
+    name: Optional[str] = None
+    url: Optional[str] = None
 
-class ServerInfoRead(ServerInfoBase):
+class ServerInfoRead(ServerBase):
+    id: int
+    ports: Optional[str] = None  # если порты храним строкой
+
+    class Config:
+        orm_mode = True
+
+# --- SERVICE ---
+class ServiceBase(BaseModel):
+    name: str
+    port: int
+
+class ServiceCreate(ServiceBase):
+    server_id: int
+
+class ServiceInfoRead(ServiceBase):
     id: int
     server_id: int
 
     class Config:
-        from_attributes = True
-
-# --- Новые схемы для каталога статуса ---
-class CatalogStatusBase(BaseModel):
-    path: str
-    main_page_status: Optional[int] = None
-    db_status: Optional[int] = None
-
-class CatalogStatusCreate(CatalogStatusBase):
-    server_id: int
-
-class CatalogStatusUpdate(CatalogStatusBase):
-    pass
-
-class CatalogStatusRead(CatalogStatusBase):
-    id: int
-    server_id: int
-
-    class Config:
-        from_attributes = True
+        orm_mode = True

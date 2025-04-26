@@ -4,42 +4,43 @@ from app.database import get_db_session_context
 from app.models import Server, Service
 from app import schemas
 from app.scanner import scan_server_ports
-from app.parser import save_admin_links_to_db  # добавил сюда парсер!
+from app.parser import parse_server_data
 
 router = APIRouter(
     prefix="/api",
     tags=["Monitoring API"]
 )
 
-@router.get("/servers", response_model=list[schemas.ServerRead])
-def get_servers(db: Session = Depends(get_db_session_context)):
+# --- Servers ---
+
+@router.get("/servers", response_model=list[schemas.ServerInfoRead])
+async def get_servers(db: Session = Depends(get_db_session_context)):
     return db.query(Server).all()
 
-@router.get("/servers/{server_id}", response_model=schemas.ServerRead)
-def get_server(server_id: int, db: Session = Depends(get_db_session_context)):
+@router.get("/servers/{server_id}", response_model=schemas.ServerInfoRead)
+async def get_server(server_id: int, db: Session = Depends(get_db_session_context)):
     server = db.query(Server).filter(Server.id == server_id).first()
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
     return server
 
-@router.post("/servers", response_model=schemas.ServerRead)
+@router.post("/servers", response_model=schemas.ServerInfoRead)
 async def create_server(server: schemas.ServerCreate, db: Session = Depends(get_db_session_context)):
     db_server = Server(**server.dict())
     db.add(db_server)
     db.commit()
     db.refresh(db_server)
 
-    # После успешного добавления сервера - автопарсинг!
+    # Автоматический парсинг сервера после добавления
     try:
-        await save_admin_links_to_db(db, db_server.id, db_server.url)
+        await parse_server_data(db_server, db)
     except Exception as e:
-        # Можно залогировать ошибку, чтобы не падал API
-        print(f"[ERROR] Failed to parse admin links for server {db_server.name}: {str(e)}")
+        print(f"[ERROR] Failed to parse server data for {db_server.name}: {str(e)}")
 
     return db_server
 
-@router.patch("/servers/{server_id}", response_model=schemas.ServerRead)
-def update_server(server_id: int, server_update: schemas.ServerUpdate, db: Session = Depends(get_db_session_context)):
+@router.patch("/servers/{server_id}", response_model=schemas.ServerInfoRead)
+async def update_server(server_id: int, server_update: schemas.ServerUpdate, db: Session = Depends(get_db_session_context)):
     server = db.query(Server).filter(Server.id == server_id).first()
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
@@ -53,7 +54,7 @@ def update_server(server_id: int, server_update: schemas.ServerUpdate, db: Sessi
     return server
 
 @router.delete("/servers/{server_id}")
-def delete_server(server_id: int, db: Session = Depends(get_db_session_context)):
+async def delete_server(server_id: int, db: Session = Depends(get_db_session_context)):
     server = db.query(Server).filter(Server.id == server_id).first()
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
@@ -62,9 +63,13 @@ def delete_server(server_id: int, db: Session = Depends(get_db_session_context))
     db.commit()
     return {"message": "Server deleted successfully"}
 
-@router.get("/services", response_model=list[schemas.ServiceRead])
-def get_services(db: Session = Depends(get_db_session_context)):
+# --- Services ---
+
+@router.get("/services", response_model=list[schemas.ServiceInfoRead])
+async def get_services(db: Session = Depends(get_db_session_context)):
     return db.query(Service).all()
+
+# --- Port Scanner ---
 
 @router.post("/scan/{server_id}")
 async def scan_server(server_id: int, db: Session = Depends(get_db_session_context)):

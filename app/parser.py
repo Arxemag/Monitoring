@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from app.models import Server, ServerInfo, CatalogStatus
 from app.services.site_parser import SiteParser
+from app.database import SessionLocal
 
 # --- Парсер главной страницы админки ---
 async def parse_admin_title(text: str, server: Server, db: Session):
@@ -21,9 +22,9 @@ async def parse_admin_title(text: str, server: Server, db: Session):
     if expiration_date_match:
         server_info.expiration_date = datetime.strptime(expiration_date_match.group(1), "%d.%m.%Y").date()
     if reg_file_limit_match:
-        server_info.reg_file_limit = int(reg_file_limit_match.group(1))
+        server_info.license_limit = int(reg_file_limit_match.group(1))
     if session_count_match:
-        server_info.session_count = int(session_count_match.group(1))
+        server_info.sessions_count = int(session_count_match.group(1))
 
     db.commit()
 
@@ -88,8 +89,7 @@ async def parse_server_data(server: Server, db: Session):
         text_title = await parser.fetch("/admin/title")
         text_pref = await parser.fetch("/admin/pref")
         text_metrics = await parser.fetch("/sysinfo/metrics")
-        # Если надо будет парсить лицензии — раскомментировать
-        # text_lic = await parser.fetch("/admin/lic")
+        # text_lic = await parser.fetch("/admin/lic")  # если понадобится
 
         await parse_admin_title(text_title, server, db)
         await parse_admin_pref(text_pref, server, db)
@@ -97,3 +97,8 @@ async def parse_server_data(server: Server, db: Session):
         # await parse_admin_lic(text_lic, server, db)  # пока не вызываем
     finally:
         await parser.close()
+
+async def save_admin_links_to_db(db: Session, server_id: int, url: str):
+    server = db.query(Server).filter(Server.id == server_id).first()
+    if server:
+        await parse_server_data(server, db)
