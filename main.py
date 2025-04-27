@@ -26,12 +26,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Monitoring Service",
-    description="Сервис для опроса серверов и парсинга страниц",
+    description="Сервис для мониторинга серверов и парсинга страниц",
     version="0.1.0",
     lifespan=lifespan,
 )
 
-# Подключение маршрутов API
+# Подключаем маршруты API
 app.include_router(api_router)
 
 @app.get("/")

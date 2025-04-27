@@ -3,7 +3,7 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from app.database import SessionLocal
 from app.models import Server
-from app.parser import parse_server_data
+from app.services.parser import parse_server_data
 
 console = Console()
 

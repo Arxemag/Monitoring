@@ -24,16 +24,24 @@ class SiteParser:
         if self.session is None:
             self.session = aiohttp.ClientSession()
 
-        login_url = f"{self.base_url}/admin/login"
+        login_url = f"{self.base_url}/admin"
+
         possible_passwords = ["skedoks", "kodeks", "skedok"]
 
         for password in possible_passwords:
             try:
-                async with self.session.post(login_url, data={"username": "kodeks", "password": password}, timeout=5) as response:
-                    if response.status == 200:
+                async with self.session.post(
+                    login_url,
+                    data={"username": "kodeks", "password": password},
+                    timeout=5
+                ) as response:
+                    print(f"[DEBUG] Пробуем логин kodeks:{password}")
+                    if response.status in (200, 302):
+                        print(f"[DEBUG] Логин успешен с паролем: {password}")
                         self.logged_in = True
                         return
-            except Exception:
+            except Exception as e:
+                print(f"[DEBUG] Ошибка логина: {e}")
                 continue
 
         raise Exception("Login failed for all password variants")

@@ -1,3 +1,4 @@
+
 import os
 import logging
 from sqlalchemy import create_engine, inspect
@@ -17,7 +18,7 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # --- Базовая модель
-from app.models.base import Base  # <-- ИСПРАВЛЕНО
+from app.models.base import Base
 
 # --- Сессия для обычного использования через `with`
 @contextmanager
@@ -47,7 +48,6 @@ def init_db():
 
     db_existed = os.path.exists("./monitoring.db")
 
-    # Создание всех таблиц
     Base.metadata.create_all(bind=engine)
 
     if db_existed:
@@ -55,7 +55,6 @@ def init_db():
     else:
         logger.info("Создан новый файл базы данных monitoring.db 🛠️")
 
-    # Проверка наличия таблицы servers
     inspector = inspect(engine)
     tables = inspector.get_table_names()
     if "servers" in tables:
@@ -76,9 +75,7 @@ def seed_servers(db: Session):
         suntd_server = Server(
             name="SUNTD",
             ip_or_domain="suntd.kodeks.expert",
-            ports="",
-            is_active=True,
-            meta_info="Initial SUNTD server",
+            ports=""
         )
         db.add(suntd_server)
         db.commit()
