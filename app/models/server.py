@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from app.models.base import Base
 
@@ -7,8 +7,10 @@ class Server(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True, nullable=False)
-    host = Column(String, nullable=False)
+    ip_or_domain = Column(String, nullable=True)
     ports = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    meta_info = Column(String, nullable=True)
 
     # Связи
     info = relationship("ServerInfo", back_populates="server", uselist=False)
@@ -29,3 +31,5 @@ class ServerInfo(Base):
     restart_time = Column(String, nullable=True)
 
     server = relationship("Server", back_populates="info")
+
+

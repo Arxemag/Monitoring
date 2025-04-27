@@ -11,12 +11,14 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     logger.info("Starting Monitoring Service...")
 
-    # Инициализация базы данных
+    # Инициализация базы данных и таблиц
     init_db()
+    logger.info("Database initialized ✅")
 
     # Засеивание серверами
     with get_db_session_context() as db:
         seed_servers(db)
+    logger.info("Servers seeded ✅")
 
     logger.info("Monitoring Service started successfully ✅")
     yield
