@@ -1,43 +1,29 @@
 import aiohttp
-
-async def find_admin_panels(base_url: str) -> list[str]:
-    found_panels = []
-
-    url = base_url.rstrip("/") + "/admin"
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=5) as response:
-                if response.status == 200:
-                    found_panels.append(url)
-    except Exception:
-        pass  # Игнорируем ошибки
-
-    return found_panels
+from aiohttp import BasicAuth
 
 class SiteParser:
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip("/")
         self.session: aiohttp.ClientSession | None = None
         self.logged_in = False
+        self.auth = None
 
     async def login(self):
         if self.session is None:
-            self.session = aiohttp.ClientSession()
+            self.session = aiohttp.ClientSession(cookie_jar=aiohttp.CookieJar())
 
         login_url = f"{self.base_url}/admin"
-
         possible_passwords = ["skedoks", "kodeks", "skedok"]
+        self.auth = None
 
         for password in possible_passwords:
             try:
-                async with self.session.post(
-                    login_url,
-                    data={"username": "kodeks", "password": password},
-                    timeout=5
-                ) as response:
+                auth = BasicAuth('kodeks', password)
+                async with self.session.get(login_url, auth=auth, timeout=5) as response:
                     print(f"[DEBUG] Пробуем логин kodeks:{password}")
                     if response.status in (200, 302):
                         print(f"[DEBUG] Логин успешен с паролем: {password}")
+                        self.auth = auth
                         self.logged_in = True
                         return
             except Exception as e:
@@ -54,7 +40,7 @@ class SiteParser:
             raise Exception("Session not initialized")
 
         url = f"{self.base_url}{path}"
-        async with self.session.get(url, timeout=10) as response:
+        async with self.session.get(url, auth=self.auth, timeout=10) as response:
             response.raise_for_status()
             return await response.text()
 

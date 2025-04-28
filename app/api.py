@@ -1,5 +1,8 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
+
 from app.database import get_db_session
 from app.models import Server, ServerInfo, CatalogStatus
 from app.schemas.server import ServerCreate, ServerUpdate
@@ -9,16 +12,15 @@ from app.utils import make_response
 
 router = APIRouter()
 
-# --- CRUD сервера ---
+class PortAddRequest(BaseModel):
+    port: int
 
-@router.post("/api/servers/")
+@router.post("/servers/")
 async def create_server(server: ServerCreate, db: Session = Depends(get_db_session)):
     new_server = Server(
         name=server.name,
         ip_or_domain=server.ip_or_domain,
-        ports=server.ports,
-        is_active=server.is_active,
-        meta_info=server.meta_info
+        ports=server.ports
     )
     db.add(new_server)
     db.commit()
@@ -30,7 +32,7 @@ async def create_server(server: ServerCreate, db: Session = Depends(get_db_sessi
         "ports": new_server.ports
     })
 
-@router.get("/api/servers/")
+@router.get("/servers/")
 async def list_servers(db: Session = Depends(get_db_session)):
     servers = db.query(Server).all()
     servers_list = [
@@ -43,7 +45,7 @@ async def list_servers(db: Session = Depends(get_db_session)):
     ]
     return make_response(True, "Список серверов", servers_list)
 
-@router.get("/api/servers/{server_id}")
+@router.get("/servers/{server_id}")
 async def get_server_details(server_id: int, db: Session = Depends(get_db_session)):
     server = db.query(Server).filter(Server.id == server_id).first()
     if not server:
@@ -85,7 +87,7 @@ async def get_server_details(server_id: int, db: Session = Depends(get_db_sessio
         "catalogs": catalogs_list,
     })
 
-@router.put("/api/servers/{server_id}")
+@router.put("/servers/{server_id}")
 async def update_server(server_id: int, updated_server: ServerUpdate, db: Session = Depends(get_db_session)):
     server = db.query(Server).filter(Server.id == server_id).first()
     if not server:
@@ -94,8 +96,6 @@ async def update_server(server_id: int, updated_server: ServerUpdate, db: Sessio
     server.name = updated_server.name
     server.ip_or_domain = updated_server.ip_or_domain
     server.ports = updated_server.ports
-    server.is_active = updated_server.is_active
-    server.meta_info = updated_server.meta_info
 
     db.commit()
     db.refresh(server)
@@ -107,7 +107,7 @@ async def update_server(server_id: int, updated_server: ServerUpdate, db: Sessio
         "ports": server.ports
     })
 
-@router.delete("/api/servers/{server_id}")
+@router.delete("/servers/{server_id}")
 async def delete_server(server_id: int, db: Session = Depends(get_db_session)):
     server = db.query(Server).filter(Server.id == server_id).first()
     if not server:
@@ -118,18 +118,38 @@ async def delete_server(server_id: int, db: Session = Depends(get_db_session)):
 
     return make_response(True, "Сервер удалён", None)
 
-# --- Сканирование портов ---
-@router.post("/api/servers/{server_id}/scan_ports")
+@router.post("/servers/{server_id}/add_port")
+async def add_port_to_server(server_id: int, port_data: PortAddRequest, db: Session = Depends(get_db_session)):
+    server = db.query(Server).filter(Server.id == server_id).first()
+    if not server:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сервер не найден")
+
+    existing_ports = [int(p.strip()) for p in server.ports.split(",") if p.strip()] if server.ports else []
+
+    if port_data.port in existing_ports:
+        return make_response(False, f"Порт {port_data.port} уже существует", None)
+
+    existing_ports.append(port_data.port)
+    server.ports = ",".join(map(str, sorted(existing_ports)))
+
+    db.commit()
+    db.refresh(server)
+
+    return make_response(True, "Порт добавлен", {
+        "id": server.id,
+        "ports": server.ports
+    })
+
+@router.post("/servers/{server_id}/scan_ports", response_class=JSONResponse)
 async def scan_ports(server_id: int, db: Session = Depends(get_db_session)):
     server = db.query(Server).filter(Server.id == server_id).first()
     if not server:
-        return make_response(False, "Сервер не найден", None)
+        return JSONResponse(content=make_response(False, "Сервер не найден", None), media_type="application/json; charset=utf-8")
 
-    open_ports = await scan_server_ports(server)
-    return make_response(True, "Порты отсканированы", {"ports": open_ports})
+    open_ports = await scan_server_ports(server, db)
+    return JSONResponse(content=make_response(True, "Порты отсканированы", {"ports": open_ports}), media_type="application/json; charset=utf-8")
 
-# --- Парсинг админки ---
-@router.post("/api/servers/{server_id}/parse_admin")
+@router.post("/servers/{server_id}/parse_admin")
 async def parse_admin(server_id: int, db: Session = Depends(get_db_session)):
     server = db.query(Server).filter(Server.id == server_id).first()
     if not server:

@@ -1,12 +1,11 @@
 import asyncio
 import socket
-from app.database import get_db_session
 from app.models import Server
+from app.database import SessionLocal
 
-BATCH_SIZE = 50  # Размер пакета портов для параллельной проверки
+BATCH_SIZE = 50
 
 def generate_ports():
-    """Генерация списка портов по заданной маске."""
     ports = {80, 1000, 1010, 1210, 1212}
     for base in range(2000, 10000, 1000):
         ports.add(base)
@@ -15,7 +14,6 @@ def generate_ports():
     return sorted(ports)
 
 async def check_port(host: str, port: int, timeout: float = 1.0) -> int | None:
-    """Асинхронная проверка одного порта."""
     loop = asyncio.get_running_loop()
     try:
         await asyncio.wait_for(
@@ -27,13 +25,11 @@ async def check_port(host: str, port: int, timeout: float = 1.0) -> int | None:
         return None
 
 async def scan_ports_batch(host: str, ports_batch: list[int]) -> list[int]:
-    """Проверка группы портов."""
     tasks = [check_port(host, port) for port in ports_batch]
     results = await asyncio.gather(*tasks)
     return [port for port in results if port is not None]
 
-async def scan_server_ports(server: Server) -> list[int]:
-    """Сканирование портов для конкретного сервера."""
+async def scan_server_ports(server: Server, db) -> list[int]:
     open_ports = []
     ports = generate_ports()
 
@@ -45,30 +41,12 @@ async def scan_server_ports(server: Server) -> list[int]:
                 print(f"Найден открытый порт: {port}")
             open_ports.extend(found_ports)
 
+    if open_ports:
+        server.ports = ",".join(str(port) for port in sorted(open_ports))
+        db.add(server)
+        db.commit()
+        print(f"[SUCCESS] Порты сохранены в сервер: {server.ports}")
+    else:
+        print("[INFO] Открытые порты не найдены.")
+
     return open_ports
-
-def save_ports_to_server(server: Server, ports: list[int], db):
-    """Сохранение открытых портов обратно в базу."""
-    server.ports = ",".join(map(str, ports))
-    db.add(server)  # не забудь добавить обратно в сессию
-    db.commit()
-    print(f"Обновлены открытые порты у сервера {server.name}: {server.ports}")
-
-def main():
-    """Основная функция для запуска сканирования."""
-    with get_db_session() as db:
-        server = db.query(Server).filter_by(name="SUNTD").first()
-        if not server:
-            print("Сервер 'SUNTD' не найден в базе.")
-            return
-
-        print(f"Начинаем сканирование сервера {server.name} ({server.ip_or_domain})...")
-        open_ports = asyncio.run(scan_server_ports(server))
-
-        if open_ports:
-            save_ports_to_server(server, open_ports, db)
-        else:
-            print("Открытые порты не найдены.")
-
-if __name__ == "__main__":
-    main()
